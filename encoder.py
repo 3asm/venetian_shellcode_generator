@@ -3,6 +3,8 @@
 import sys
 import getopt
 from utils import prettyText #add code coloring
+from binascii import hexlify, unhexlify
+from struct import pack
 
 debugMode = False
 debugLevel = 1
@@ -14,7 +16,14 @@ def contains(small,big):
     return True
 
 def usage():
+
     print prettyText("%s --alphabet <alphabet_word_file> --word <word_hex> --list <function_list>" % sys.argv[0],"green")
+    print prettyText("--alphabet, -a : TODO","green")
+    print prettyText("--word, -w : TODO","green")
+    print prettyText("--list, -l : TODO","green")
+    print prettyText("--offset, -o : TODO","green")
+    print prettyText("--mutation, -m : TODO","green")
+    print prettyText("--help, -h : this help","green")
     print prettyText("example: %s --alphabet alphabet.txt --word 12131415 --list add,sub" % sys.argv[0],"green")
 
 
@@ -58,7 +67,9 @@ def generateRepresentation(word,base=1):
 
     tmp = []
     lstRep = []
-    for m in range(1,base+1):
+
+
+    for m in range(-base,base+1):
         for l in range(2**len(chars)):
             tmp = []
             tmp.extend(chars)
@@ -81,10 +92,10 @@ def generateRepresentation(word,base=1):
                 tmp[3] = tmp[3] + 0x100 * m
 
             lstRep.append(tmp)
-    '''
+
         for l in lstRep:
             debugListHex(l,"**")
-    '''
+
     return lstRep
 
 
@@ -101,9 +112,9 @@ def generateSpaceEx(func, initSpace, alphabet):
     return lSpace
 
 
-def findCombination(word,lstFunc,alphabet,offset):
+def findCombination(word,lstFunc,alphabet,offset,reprs):
 
-    debug("findCombination(%s,%s,%s)" % (word,lstFunc,alphabet))
+    debug("findCombination(%s,%s,%s)" % (word,lstFunc,alphabet),4)
 
     found = False
     tmpAlph = []
@@ -113,15 +124,15 @@ def findCombination(word,lstFunc,alphabet,offset):
     spaceTree = Tree()
     spaceTree.add_features(space=offset)
 
+    '''
     if contains(word,alphabet):
         info("Alphabet contains Word")
         info("PUSH %s" % word)
         exit()
+    '''
 
     while not found:
         info("Mutation: %d !" % mutation)
-        #generate word representation in the current mutation
-        reprs = generateRepresentation(word,mutation)
 
         #debug
         #debug("> Tree:")
@@ -154,8 +165,7 @@ def findCombination(word,lstFunc,alphabet,offset):
                         nodeF.add_features(space=tmpSpace,history=space)
                         lstAncestors = [nodeF,]
                         lstAncestors.extend(nodeF.get_ancestors())
-                        getSolution(r,offset,lstAncestors)
-                        exit()
+                        return getSolution(r,offset,lstAncestors)
 
 
                 nodeF = n.add_child(name=f)
@@ -168,6 +178,9 @@ def getSolution(reprs,offset,his):
     debugListHex(offset,"offset:",2)
     sol = dict()
     sol2 = dict()
+    solText = ''
+
+
     for rg in range(len(reprs)):
         r = reprs[rg]
         of = offset[rg]
@@ -193,11 +206,14 @@ def getSolution(reprs,offset,his):
         llf.extend(anc)
         vls = [c.name for c in llf]
         sol[rg] = llf
+
+    debug("sol:" + str(sol),4)
     for i in sol:
         vls = [(c.name, c.function) for c in sol[i]]
+        debug(vls,4)
         sol2["method"] = []
         for j in range(len(vls)):
-            sol2["method"].append(sol[i][0].function)
+            sol2["method"].append(vls[j][1])
             if sol2.has_key(j):
                 sol2[j].append(vls[j][0])
             else:
@@ -209,18 +225,18 @@ def getSolution(reprs,offset,his):
     test = []
     test.append(offset[0] * 0x01000000 + offset[1] * 0x00010000 + offset[2] * 0x00000100 + offset[3] * 0x00000001)
 
+    debug(sol2,4)
+
     for m in range(len(sol2["method"])):
-
-
         test.append(sol2[m][0] * 0x01000000 + sol2[m][1] * 0x00010000 + sol2[m][2] * 0x00000100 + sol2[m][3] * 0x00000001)
-
-        info("%s\t\t\t0x%02x%02x%02x%02x" % (sol2["method"][m],sol2[m][0],sol2[m][1],sol2[m][2],sol2[m][3]))
-
-
+        info("%s\t\t\tEAX, 0x%02x%02x%02x%02x" % (sol2["method"][m],sol2[m][0],sol2[m][1],sol2[m][2],sol2[m][3]))
+        solText += "%s\t\t\tEAX, 0x%02x%02x%02x%02x\n" % (sol2["method"][m],sol2[m][0],sol2[m][1],sol2[m][2],sol2[m][3])
     info("RESULT\t\t0x%08x" % (reprs[0] * 0x01000000 + reprs[1] * 0x00010000 + reprs[2] * 0x00000100 + reprs[3] * 0x00000001))
     testResult(test,(reprs[0] * 0x01000000 + reprs[1] * 0x00010000 + reprs[2] * 0x00000100 + reprs[3] * 0x00000001))
+    return solText
 
 def testResult(lst,res):
+    error("Testing only support ADD only solution !!!")
     f = 0x0
     for l in lst:
         f = f + l
@@ -240,6 +256,15 @@ def SUB(a,b):
     return b-a
 
 
+def AND(a,b):
+    return a & b
+
+def XOR(a,b):
+    return a ^ b
+
+def OR(a,b):
+    return a | b
+
 if __name__ == "__main__":
 
     try:
@@ -252,7 +277,7 @@ if __name__ == "__main__":
     debug("Parsing options ...")
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "h:awl:d:o",["help","alphabet=","word=","list=","debug=","offset="])
+        opts, args = getopt.getopt(sys.argv[1:], "ha:w:l:d:o:m:r:",["help","alphabet=","word=","list=","debug=","offset=","mutation=","raw="])
     except getopt.GetoptError, err:
         print prettyText(str(err),"red")
         sys.exit(2)
@@ -261,7 +286,10 @@ if __name__ == "__main__":
     initialAlphabet = []
     word = [] #word to search ['\x12','\x13','\x14','\x15']
     funcList = []
-    offset = [0x00,]
+    offset = [0x00,0x00,0x00,0x00]
+    mutationLimit = 0
+    representation = [] #list of word representation to search for
+    raw = []
     debug(opts)
 
     for o, a in opts:
@@ -280,6 +308,12 @@ if __name__ == "__main__":
                     funcList.append(ADD)
                 elif f.lower() == "sub":
                     funcList.append(SUB)
+                elif f.lower() == "and":
+                    funcList.append(AND)
+                elif f.lower() == "xor":
+                    funcList.append(XOR)
+                elif f.lower() == "or":
+                    funcList.append(OR)
                 else:
                     print prettyText("%s not support !" % f,"red")
                     usage()
@@ -287,18 +321,55 @@ if __name__ == "__main__":
         elif o in ("-d","--debug"):
             debugMode = True
             debugLevel = int(a)
+            info("Debug Level %d" % debugLevel)
         elif o in ("-o","--offset"):
             offset = []
             if a != '00000000':
-                error("result might be wrong, only offset 0x00000000 is granteed to work !")
+                error("Result might be wrong, only offset 0x00000000 is garnteed to work !")
             for i in range(0,len(a),2):
                 offset.append(int(a[i:i+2],16))
+        elif o in ("-m","--mutation"):
+            mutationLimit = int(a)
+        elif o in("-r","--raw"):
+            raw = []
+            a = unhexlify(a.replace('\\x',''))
+            for s in range(len(a)/4):
+                raw.append(hexlify(pack('<L',int(hexlify(a[s*4:(s+1)*4]),16))))
+            raw.reverse()
+            info('Raw Data to encode: %s' % str(raw))
+        else:
+            usage()
+            sys.exit(1)
 
 
     debugListHex(initialAlphabet,"Alphabet:")
     debugListHex(word,"Word:")
     debugListHex(offset,"Offset:")
     debug(str(funcList))
+    debug("Mutation Limit: %d" % mutationLimit)
 
-    findCombination(word,funcList,initialAlphabet,offset)
+    representation.extend(generateRepresentation(word,mutationLimit))
+    debug(representation,3)
+
+
+    if len(raw) > 0:
+        finalSolution = ''
+        debug("zeroing register",4)
+        zeroReg = findCombination([0x00,0x00,0x00,0x00],[AND,],initialAlphabet,[0xFF,0xFF,0xFF,0xFF],[[0x00,0x00,0x00,0x00],])
+        debug("Finding solution for RAW input",4)
+        for c in raw:
+            finalSolution += zeroReg
+            word = []
+            for i in range(0,len(c),2):
+                word.append(int(c[i:i+2],16))
+            representation = []
+            representation.extend(generateRepresentation(word,mutationLimit))
+            debug(c,4)
+            finalSolution += findCombination(word,funcList,initialAlphabet,offset,representation)
+            finalSolution += "PUSH EAX\n"
+        print finalSolution
+    else:
+        representation.extend(generateRepresentation(word,mutationLimit))
+        debug(representation,3)
+        findCombination(word,funcList,initialAlphabet,offset,representation)
 
